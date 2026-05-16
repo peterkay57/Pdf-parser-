@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>PDF Parser - Extract Text, Tables & Images</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📄 PDF Parser</h1>
+            <p>Extract text, tables, and images from any PDF file</p>
+        </header>
+
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <p>Click or drag & drop your PDF file here</p>
+                <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                <button class="upload-btn" id="uploadBtn">Choose PDF File</button>
+            </div>
+            <div id="fileName" class="file-name"></div>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Parsing your PDF...</p>
+        </div>
+
+        <div id="results" class="results"></div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadArea = document.getElementById('uploadArea');
+        const fileName = document.getElementById('fileName');
+        const loading = document.getElementById('loading');
+        const resultsDiv = document.getElementById('results');
+
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                parsePDF(file);
+            } else {
+                alert('Please drop a valid PDF file');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                parsePDF(e.target.files[0]);
+            }
+        });
+
+        async function parsePDF(file) {
+            fileName.textContent = `📄 ${file.name}`;
+            loading.style.display = 'flex';
+            resultsDiv.innerHTML = '';
+
+            const formData = new FormData();
+            formData.append('pdf', file);
+
+            try {
+                const response = await fetch('/parse-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                loading.style.display = 'none';
+
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="error">❌ Error: ${data.error}</div>`;
+                    return;
+                }
+
+                displayResults(data);
+            } catch (error) {
+                loading.style.display = 'none';
+                resultsDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        function displayResults(data) {
+            let html = `
+                <div class="result-card">
+                    <h3>📊 Summary</h3>
+                    <p><strong>Filename:</strong> ${data.filename}</p>
+                    <p><strong>Pages:</strong> ${data.page_count}</p>
+                    <p><strong>Characters extracted:</strong> ${data.text_length.toLocaleString()}</p>
+                </div>
+            `;
+
+            if (data.text && data.text.length > 0) {
+                html += `
+                    <div class="result-card">
+                        <h3>📝 Extracted Text</h3>
+                        <div class="text-content">${escapeHtml(data.text)}</div>
+                    </div>
+                `;
+            }
+
+            if (data.tables && data.tables.length > 0) {
+                html += `
+                    <div class="result-card">
+                        <h3>📊 Tables Found (${data.tables.length})</h3>
+                `;
+                data.tables.forEach((table, idx) => {
+                    html += `<details>
+                        <summary>Table on Page ${table.page}</summary>
+                        <pre>${JSON.stringify(table.data, null, 2)}</pre>
+                    </details>`;
+                });
+                html += `</div>`;
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
