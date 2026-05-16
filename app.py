@@ -1,29 +1,26 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import pymupdf
 import pandas as pd
 import io
 import base64
+import os
 
 app = Flask(__name__)
 
+# Serve the main webpage
 @app.route('/')
 def home():
-    return jsonify({
-        "message": "PDF Parser API is running",
-        "endpoints": {
-            "/parse-pdf": "POST - Send a PDF file to extract text, tables, and images",
-            "/health": "GET - Check if server is running"
-        }
-    })
+    return render_template('index.html')
 
+# Health check
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "alive"})
 
+# PDF parsing API (same as before)
 @app.route('/parse-pdf', methods=['POST'])
 def parse_pdf():
     try:
-        # Check if file is present
         if 'pdf' not in request.files:
             return jsonify({"error": "No PDF file provided"}), 400
         
@@ -32,13 +29,10 @@ def parse_pdf():
         if pdf_file.filename == '':
             return jsonify({"error": "Empty filename"}), 400
         
-        # Read the PDF file
         pdf_bytes = pdf_file.read()
-        
-        # Open with PyMuPDF
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
         
-        # Extract text from all pages
+        # Extract text
         full_text = ""
         for page_num, page in enumerate(doc):
             page_text = page.get_text()
@@ -66,44 +60,16 @@ def parse_pdf():
                             "error": str(e)
                         })
         
-        # Extract images (as base64)
-        images_list = []
-        for page_num, page in enumerate(doc):
-            image_list = page.get_images()
-            for img_idx, img in enumerate(image_list):
-                try:
-                    xref = img[0]
-                    pix = pymupdf.Pixmap(doc, xref)
-                    if pix.n - pix.alpha < 4:  # Can save as PNG
-                        img_bytes = pix.tobytes("png")
-                        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
-                        images_list.append({
-                            "page": page_num + 1,
-                            "image_index": img_idx + 1,
-                            "width": pix.width,
-                            "height": pix.height,
-                            "base64": img_base64[:100] + "...",  # Truncated for response size
-                            "size": len(img_bytes)
-                        })
-                    pix = None
-                except Exception as e:
-                    images_list.append({
-                        "page": page_num + 1,
-                        "image_index": img_idx + 1,
-                        "error": str(e)
-                    })
-        
         doc.close()
         
         return jsonify({
             "success": True,
             "filename": pdf_file.filename,
             "page_count": len(doc),
-            "text": full_text[:5000],  # Limit text size for response
+            "text": full_text[:10000],
             "text_length": len(full_text),
             "tables": tables_list,
-            "images": images_list,
-            "full_text_available": len(full_text) > 5000
+            "full_text_available": len(full_text) > 10000
         })
     
     except Exception as e:
